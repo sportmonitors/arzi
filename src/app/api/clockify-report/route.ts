@@ -5,7 +5,7 @@ import {NextResponse} from 'next/server';
 export async function GET() {
   try {
     const reportUrl =
-      'https://app.clockify.me/report/shared/692acd86bf199e181d39f05f';
+      'https://app.clockify.me/report/shared/692acd86bf199e181d39f05f?page=1&pageSize=600&dateRangeStart=&dateRangeEnd=&sortOrder=&sortColumn=';
     const response = await fetch(reportUrl, {
       headers: {
         'Content-Type': 'application/json',
