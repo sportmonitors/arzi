@@ -1,10 +1,8 @@
+import {ADMIN_UID} from '@/lib/admin';
 import {auth} from '@/lib/firebase';
 import type {Payment, WorkLog} from '@/types';
 
-const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID;
-
 const assertAdmin = (userId: string) => {
-  if (!ADMIN_UID) throw new Error('ADMIN_UID is not configured');
   if (userId !== ADMIN_UID) throw new Error('Unauthorized');
 };
 

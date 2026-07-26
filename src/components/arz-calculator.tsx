@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import type { User } from 'firebase/auth';
 
+import { ADMIN_UID } from '@/lib/admin';
 import { getSummary } from '@/lib/actions';
 import {
   addPayment,
@@ -104,8 +105,6 @@ interface ClockifyTimeEntry {
   _id: string;
 }
 
-const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID;
-
 export default function ArzCalculator({ user }: ArzCalculatorProps) {
   const [manualWorkLogs, setManualWorkLogs] = useState<WorkLog[]>([]);
   const [clockifyWorkLogs, setClockifyWorkLogs] = useState<WorkLog[]>([]);
@@ -192,16 +191,6 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
   useEffect(() => {
     async function loadData() {
       if (!user) return;
-      if (!ADMIN_UID) {
-        console.error("ADMIN_UID is not set in environment variables.");
-        toast({
-          variant: 'destructive',
-          title: 'خطای پیکربندی',
-          description: 'شناسه ادمین تنظیم نشده است.',
-        });
-        setIsDataLoaded(true);
-        return;
-      }
       try {
         const [paymentsData, workLogsData] = await Promise.all([
           getPayments(ADMIN_UID),

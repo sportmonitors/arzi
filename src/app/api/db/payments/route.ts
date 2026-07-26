@@ -1,4 +1,5 @@
 import {NextRequest, NextResponse} from 'next/server';
+import {ADMIN_UID} from '@/lib/admin';
 import {
   adminCollectionPath,
   createDocument,
@@ -8,7 +9,7 @@ import type {Payment} from '@/types';
 
 export const runtime = 'nodejs';
 
-const getAdminUid = () => process.env.NEXT_PUBLIC_ADMIN_UID;
+const getAdminUid = () => ADMIN_UID;
 
 const getIdToken = (request: NextRequest) => {
   const header = request.headers.get('authorization');
@@ -18,16 +19,8 @@ const getIdToken = (request: NextRequest) => {
 
 export async function GET() {
   try {
-    const adminUid = getAdminUid();
-    if (!adminUid) {
-      return NextResponse.json(
-        {error: 'ADMIN_UID is not configured'},
-        {status: 500}
-      );
-    }
-
     const payments = await listCollection<Payment>(
-      adminCollectionPath(adminUid, 'payments'),
+      adminCollectionPath(getAdminUid(), 'payments'),
       {orderBy: 'date desc', pageSize: 500}
     );
 
@@ -43,17 +36,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const adminUid = getAdminUid();
-    if (!adminUid) {
-      return NextResponse.json(
-        {error: 'ADMIN_UID is not configured'},
-        {status: 500}
-      );
-    }
-
     const body = (await request.json()) as Omit<Payment, 'id'>;
     const payment = await createDocument<Payment>(
-      adminCollectionPath(adminUid, 'payments'),
+      adminCollectionPath(getAdminUid(), 'payments'),
       {
         ...body,
         createdAt: new Date(),

@@ -1,10 +1,9 @@
 import {NextRequest, NextResponse} from 'next/server';
+import {ADMIN_UID} from '@/lib/admin';
 import {adminDocumentPath, deleteDocument, updateDocument} from '@/lib/firestore-rest';
 import type {Payment} from '@/types';
 
 export const runtime = 'nodejs';
-
-const getAdminUid = () => process.env.NEXT_PUBLIC_ADMIN_UID;
 
 const getIdToken = (request: NextRequest) => {
   const header = request.headers.get('authorization');
@@ -16,20 +15,12 @@ type RouteContext = {params: Promise<{id: string}>};
 
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
-    const adminUid = getAdminUid();
-    if (!adminUid) {
-      return NextResponse.json(
-        {error: 'ADMIN_UID is not configured'},
-        {status: 500}
-      );
-    }
-
     const {id} = await context.params;
     const payment = (await request.json()) as Payment;
     const {id: _id, ...data} = payment;
 
     await updateDocument(
-      adminDocumentPath(adminUid, 'payments', id),
+      adminDocumentPath(ADMIN_UID, 'payments', id),
       data,
       {idToken: getIdToken(request)}
     );
@@ -49,17 +40,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const adminUid = getAdminUid();
-    if (!adminUid) {
-      return NextResponse.json(
-        {error: 'ADMIN_UID is not configured'},
-        {status: 500}
-      );
-    }
-
     const {id} = await context.params;
     await deleteDocument(
-      adminDocumentPath(adminUid, 'payments', id),
+      adminDocumentPath(ADMIN_UID, 'payments', id),
       {idToken: getIdToken(request)}
     );
 

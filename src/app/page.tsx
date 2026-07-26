@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { ADMIN_UID } from '@/lib/admin';
 import { auth } from '@/lib/firebase';
 import Auth from '@/components/auth';
 import ArzCalculator from '@/components/arz-calculator';
@@ -9,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 
 const MOCK_USER: User = {
-  uid: process.env.NEXT_PUBLIC_ADMIN_UID || 'l0rwK4cDCsTH1UqXO13YkF2elJr2', // Use Admin UID for mock
+  uid: ADMIN_UID,
   email: 'php.modern@gmail.com',
   displayName: 'php.modern@gmail.com',
   photoURL: '',
