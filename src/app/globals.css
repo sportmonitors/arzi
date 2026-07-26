@@ -30,30 +30,30 @@ body {
     --radius: 0.5rem;
   }
   .dark {
-    --background: 220 18% 11%;
+    --background: 222 28% 8%;
     --foreground: 210 40% 98%;
-    --card: 220 18% 14%;
+    --card: 222 24% 11%;
     --card-foreground: 210 40% 98%;
-    --popover: 220 18% 11%;
+    --popover: 222 24% 11%;
     --popover-foreground: 210 40% 98%;
-    --primary: 145 65% 45%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary: 166 72% 41%;
+    --primary-foreground: 166 80% 6%;
+    --secondary: 217 22% 16%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 48 95% 60%;
-    --accent-foreground: 24 9.8% 10%;
-    --destructive: 0 62.8% 30.6%;
+    --muted: 217 18% 15%;
+    --muted-foreground: 215 15% 65%;
+    --accent: 173 45% 18%;
+    --accent-foreground: 166 70% 75%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 145 65% 45%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --border: 217 18% 18%;
+    --input: 217 18% 18%;
+    --ring: 166 72% 41%;
+    --chart-1: 166 70% 45%;
+    --chart-2: 199 70% 50%;
+    --chart-3: 40 80% 55%;
+    --chart-4: 280 50% 55%;
+    --chart-5: 340 65% 55%;
   }
 }
 
@@ -63,5 +63,116 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .app-shell {
+    background:
+      radial-gradient(1200px 500px at 100% -10%, hsl(166 60% 20% / 0.28), transparent 60%),
+      radial-gradient(900px 420px at 0% 0%, hsl(199 70% 30% / 0.18), transparent 55%),
+      hsl(var(--background));
+  }
+  .payslip-card {
+    @apply overflow-hidden border-primary/20 bg-gradient-to-br from-card via-card to-primary/5;
+  }
+  .metric-tile {
+    @apply rounded-xl border border-border/80 bg-background/50 p-4 backdrop-blur-sm;
+  }
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .app-shell {
+    background: #fff !important;
+  }
+
+  .print-root {
+    display: flex !important;
+    flex-direction: column !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 16px !important;
+  }
+
+  /* Flatten the lg:grid wrapper so print order applies to each card */
+  .print-root > .grid {
+    display: contents !important;
+  }
+
+  .print-summary {
+    order: 1 !important;
+  }
+
+  .print-payments {
+    order: 2 !important;
+  }
+
+  .print-manual {
+    order: 3 !important;
+  }
+
+  .print-clockify {
+    order: 4 !important;
+    page-break-before: always;
+  }
+
+  .print-expand {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .print-expand [data-radix-scroll-area-viewport] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .print-keep-scroll {
+    max-height: 320px !important;
+    overflow: auto !important;
+  }
+
+  .print-keep-scroll [data-radix-scroll-area-viewport] {
+    max-height: 320px !important;
+  }
+
+  .print-card {
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #fff !important;
+    color: #0f172a !important;
+    break-inside: avoid;
+  }
+
+  .print-title {
+    display: block !important;
+  }
+
+  .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    max-width: none !important;
   }
 }

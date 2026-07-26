@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Bot, Calculator, Edit, PlusCircle, Printer, RefreshCw, Trash2 } from 'lucide-react';
+import { Bot, Calculator, Download, Edit, FileCode2, FileSpreadsheet, PlusCircle, Printer, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -21,6 +21,7 @@ import {
   updateWorkLog,
   deleteWorkLog,
 } from '@/lib/db';
+import { downloadExcelReport, downloadHtmlReport } from '@/lib/export-report';
 import type { Payment, WorkLog } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,12 @@ import {
   DialogTrigger,
   DialogClose
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Form,
   FormControl,
@@ -70,6 +77,7 @@ import { Separator } from './ui/separator';
 import { Textarea } from './ui/textarea';
 import { Skeleton } from './ui/skeleton';
 import { ScrollArea } from './ui/scroll-area';
+import { Badge } from './ui/badge';
 
 const paymentSchema = z.object({
   amountIRT: z.coerce.number().positive('مبلغ باید عدد مثبت باشد.'),
@@ -416,8 +424,32 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
     });
   };
 
+  const buildReport = () => ({
+    generatedAt: new Date(),
+    exchangeRate,
+    totalHours,
+    totalEarningsUSD,
+    totalPaymentsIRT,
+    totalPaymentsUSD,
+    balanceUSD,
+    balanceIRT,
+    payments,
+    manualWorkLogs,
+    clockifyWorkLogs,
+  });
+
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExportExcel = () => {
+    downloadExcelReport(buildReport());
+    toast({ title: 'خروجی اکسل', description: 'فایل اکسل دانلود شد.' });
+  };
+
+  const handleExportHtml = () => {
+    downloadHtmlReport(buildReport());
+    toast({ title: 'خروجی HTML', description: 'فایل HTML دانلود شد.' });
   };
 
   const formatUSD = (amount: number) =>
@@ -447,50 +479,127 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
 
   if (!isDataLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <p>در حال بارگذاری اطلاعات...</p>
+      <div className="app-shell flex min-h-screen items-center justify-center">
+        <div className="rounded-2xl border bg-card/80 px-8 py-6 shadow-lg backdrop-blur">
+          <p className="text-muted-foreground">در حال بارگذاری اطلاعات...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-8">
-      <style>{`
-        @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .no-print { display: none !important; }
-          .container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
-          .card { box-shadow: none !important; border: 1px solid #ccc; }
-        }
-      `}</style>
-      <header className="mb-8 flex flex-col items-center justify-between gap-4 md:flex-row no-print">
+    <div className="app-shell min-h-screen">
+      <div className="print-root container mx-auto space-y-8 p-4 md:p-8">
+      <div className="print-title mb-2 hidden border-b border-slate-300 pb-3 text-center">
+        <h1 className="text-2xl font-bold text-slate-900">فیش خلاصه حساب · محاسبه‌گر ارز</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          تاریخ چاپ: {new Date().toLocaleDateString('fa-IR')}
+          {exchangeRate > 0 ? ` · نرخ دلار: ${formatNumber(exchangeRate)}` : ''}
+        </p>
+      </div>
+
+      <header className="no-print mb-2 flex flex-col items-stretch justify-between gap-4 rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm backdrop-blur md:flex-row md:items-center">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-primary/20 p-2 text-primary">
-            <Calculator className="h-8 w-8" />
+          <div className="rounded-xl bg-primary/15 p-2.5 text-primary ring-1 ring-primary/20">
+            <Calculator className="h-7 w-7" />
           </div>
-          <h1 className="font-headline text-4xl font-bold">محاسبه‌گر ارز</h1>
+          <div>
+            <h1 className="font-headline text-3xl font-bold tracking-tight">محاسبه‌گر ارز</h1>
+            <p className="text-sm text-muted-foreground">خلاصه حساب، پرداخت‌ها و سوابق کاری</p>
+          </div>
         </div>
-        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-end">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end md:w-auto">
          {isAdmin && (
-            <div className="w-full md:w-auto">
+            <div className="w-full sm:w-auto">
               <Label>نرخ دلار به تومان</Label>
               <Input
                 type="number"
                 placeholder="مثال: ۵۰۰۰۰"
                 value={exchangeRate || ''}
                 onChange={(e) => setExchangeRate(Number(e.target.value))}
-                className="w-full text-center font-headline text-lg md:w-48"
+                className="w-full text-center font-headline text-lg font-tabular md:w-48"
               />
             </div>
           )}
-          <Button onClick={handlePrint} variant="outline" className="no-print">
-            <Printer className="ml-2" /> چاپ
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" />
+                خروجی
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={handleExportExcel}>
+                <FileSpreadsheet className="ml-2 h-4 w-4" />
+                اکسل (.xls)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportHtml}>
+                <FileCode2 className="ml-2 h-4 w-4" />
+                HTML زیبا
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handlePrint}>
+                <Printer className="ml-2 h-4 w-4" />
+                چاپ / PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
+      <Card className="print-summary print-card payslip-card">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-xl">خلاصه حساب</CardTitle>
+              <CardDescription>نمای فیش‌مانند از درآمد و بدهی</CardDescription>
+            </div>
+            <Badge variant="secondary" className="no-print font-tabular">
+              {formatNumber(totalHours)} ساعت
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          <div className="metric-tile space-y-1">
+            <p className="text-xs text-muted-foreground">جمع ساعات</p>
+            <p className="font-headline text-2xl font-tabular">{formatNumber(totalHours)}</p>
+          </div>
+          <div className="metric-tile space-y-1">
+            <p className="text-xs text-muted-foreground">جمع درآمد</p>
+            <p className="font-headline text-2xl font-tabular">{formatUSD(totalEarningsUSD)}</p>
+          </div>
+          <div className="metric-tile space-y-1">
+            <p className="text-xs text-muted-foreground">پرداختی (دلار)</p>
+            <p className="font-headline text-2xl font-tabular text-emerald-400">{formatUSD(totalPaymentsUSD)}</p>
+          </div>
+          <div className="metric-tile space-y-1">
+            <p className="text-xs text-muted-foreground">پرداختی (تومان)</p>
+            <p className="font-headline text-lg font-tabular text-emerald-400">{formatIRT(totalPaymentsIRT)}</p>
+          </div>
+          <div className="metric-tile col-span-2 space-y-1 border-destructive/30 bg-destructive/5 md:col-span-1 lg:col-span-2">
+            <p className="text-xs text-muted-foreground">بدهی باقی‌مانده</p>
+            <p className="font-headline text-2xl font-tabular text-destructive">{formatUSD(balanceUSD)}</p>
+            <p className="text-sm font-tabular text-destructive/90">
+              {exchangeRate > 0 ? formatIRT(balanceIRT) : 'نرخ را وارد کنید'}
+            </p>
+          </div>
+        </CardContent>
+        <CardFooter className="flex-col items-start gap-4 border-t bg-muted/20">
+          {isAdmin && (
+            <Button onClick={handleGenerateSummary} disabled={isAiLoading} className="no-print">
+              <Bot className="ml-2" />
+              {isAiLoading ? 'در حال تولید...' : 'خلاصه با هوش مصنوعی'}
+            </Button>
+          )}
+          {aiSummary && (
+            <div className="w-full rounded-xl border bg-background/60 p-4 text-sm leading-7">
+              <p className="whitespace-pre-wrap font-body">{aiSummary}</p>
+            </div>
+          )}
+        </CardFooter>
+      </Card>
+
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <Card className="flex flex-col">
+        <Card className="print-manual print-card flex flex-col">
           <CardHeader>
              <div className="flex flex-wrap justify-between items-center gap-2">
                  <div>
@@ -505,9 +614,9 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                       setWorkLogDialogOpen(isOpen);
                   }}>
                       <DialogTrigger asChild>
-                          <Button variant="outline" onClick={() => setEditingWorkLog(null)}><PlusCircle className="ml-2" /> افزودن دستی</Button>
+                          <Button variant="outline" className="no-print" onClick={() => setEditingWorkLog(null)}><PlusCircle className="ml-2" /> افزودن دستی</Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent className="no-print">
                           <DialogHeader>
                               <DialogTitle>{editingWorkLog ? 'ویرایش' : 'افزودن'} رکورد کاری</DialogTitle>
                           </DialogHeader>
@@ -566,7 +675,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
              </div>
           </CardHeader>
           <CardContent className="flex-grow overflow-hidden">
-            <ScrollArea className="h-[400px] pr-4">
+            <ScrollArea className="print-expand h-[400px] pr-4">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -586,19 +695,19 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                           <TableCell className="font-medium max-w-[150px] truncate">
                             {log.description}
                           </TableCell>
-                          <TableCell className="font-code text-xs whitespace-nowrap">
+                          <TableCell className="font-code text-xs whitespace-nowrap font-tabular">
                             {formatDateTime(log.start)}
                           </TableCell>
-                          <TableCell className="font-code text-xs whitespace-nowrap">
+                          <TableCell className="font-code text-xs whitespace-nowrap font-tabular">
                             {formatDateTime(log.end)}
                           </TableCell>
-                          <TableCell className="text-right font-code">
+                          <TableCell className="text-right font-code font-tabular">
                             {formatNumber(log.hours)}
                           </TableCell>
-                          <TableCell className="text-right font-code">
+                          <TableCell className="text-right font-code font-tabular">
                             {formatUSD(log.rate)}
                           </TableCell>
-                          <TableCell className="text-right font-headline">
+                          <TableCell className="text-right font-headline font-tabular">
                             {formatUSD(log.hours * log.rate)}
                           </TableCell>
                           {isAdmin && (
@@ -630,7 +739,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
           </CardContent>
         </Card>
         
-        <Card className="flex flex-col">
+        <Card className="print-payments print-card flex flex-col">
           <CardHeader>
              <div className="flex flex-wrap justify-between items-center gap-2">
                  <div>
@@ -751,7 +860,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
              </div>
           </CardHeader>
           <CardContent className="flex-grow overflow-hidden">
-            <ScrollArea className="h-[400px] pr-4">
+            <ScrollArea className="print-expand h-[400px] pr-4">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -767,17 +876,17 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                   {payments.length > 0 ? (
                     payments.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell>
+                        <TableCell className="font-tabular">
                           {new Date(p.date).toLocaleDateString('fa-IR')}
                         </TableCell>
                          <TableCell>{p.description || '-'}</TableCell>
-                        <TableCell className="text-right font-code">
+                        <TableCell className="text-right font-code font-tabular">
                           {formatNumber(p.amountIRT)}
                         </TableCell>
-                        <TableCell className="text-right font-code">
+                        <TableCell className="text-right font-code font-tabular">
                           {formatNumber(p.exchangeRate)}
                         </TableCell>
-                        <TableCell className="text-right font-headline">
+                        <TableCell className="text-right font-headline font-tabular">
                           {formatUSD(p.amountIRT / p.exchangeRate)}
                         </TableCell>
                         {isAdmin && (
@@ -816,13 +925,15 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
       </div>
 
      
-      <Card className="mt-8">
+      <Card className="print-clockify print-card">
            <CardHeader>
              <div className="flex flex-wrap justify-between items-center gap-2">
                 <div>
                     <CardTitle>سوابق کاری Clockify</CardTitle>
                     <CardDescription>
-                      سوابق کاری همگام‌شده از Clockify.
+                      سوابق کاری همگام‌شده از Clockify
+                      {clockifyWorkLogs.length > 0 ? ` · ${clockifyWorkLogs.length} رکورد` : ''}.
+                      در چاپ به‌صورت اسکرول‌شونده در انتهای صفحه می‌ماند.
                     </CardDescription>
                 </div>
                 {isAdmin && (
@@ -836,7 +947,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
             </div>
           </CardHeader>
           <CardContent className="flex-grow overflow-hidden">
-            <ScrollArea className="h-[400px]">
+            <ScrollArea className="print-keep-scroll h-[400px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -861,19 +972,19 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                         <TableCell className="font-medium">
                           {log.description}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="font-tabular">
                           {formatDateTime(log.start)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="font-tabular">
                           {formatDateTime(log.end)}
                         </TableCell>
-                        <TableCell className="text-right font-code">
+                        <TableCell className="text-right font-code font-tabular">
                           {formatNumber(log.hours)}
                         </TableCell>
-                        <TableCell className="text-right font-code">
+                        <TableCell className="text-right font-code font-tabular">
                           {formatUSD(log.rate)}
                         </TableCell>
-                        <TableCell className="text-right font-headline">
+                        <TableCell className="text-right font-headline font-tabular">
                           {formatUSD(log.hours * log.rate)}
                         </TableCell>
                       </TableRow>
@@ -890,69 +1001,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
             </ScrollArea>
           </CardContent>
         </Card>
-
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle>خلاصه حساب</CardTitle>
-          <CardDescription>
-            مروری بر درآمدها و پرداخت‌های شما.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-x-8 gap-y-4 md:grid-cols-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">جمع ساعات</p>
-            <p className="font-headline text-2xl">{formatNumber(totalHours)}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">جمع درآمد</p>
-            <p className="font-headline text-2xl">
-              {formatUSD(totalEarningsUSD)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">جمع پرداختی (دلار)</p>
-            <p className="font-headline text-2xl text-green-500">
-              {formatUSD(totalPaymentsUSD)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">جمع پرداختی (تومان)</p>
-            <p className="font-headline text-lg text-green-500">
-              {formatIRT(totalPaymentsIRT)}
-            </p>
-          </div>
-          <div className="col-span-2 mt-4 space-y-1 md:col-span-4">
-            <Separator />
-          </div>
-          <div className="col-span-2 space-y-1 md:col-start-3">
-            <p className="text-sm text-muted-foreground">بدهی (دلار)</p>
-            <p className="font-headline text-3xl text-destructive">
-              {formatUSD(balanceUSD)}
-            </p>
-          </div>
-          <div className="col-span-2 space-y-1 md:col-start-4">
-            <p className="text-sm text-muted-foreground">بدهی (تومان)</p>
-            <p className="font-headline text-2xl text-destructive">
-              {exchangeRate > 0
-                ? formatIRT(balanceIRT)
-                : 'نرخ را وارد کنید'}
-            </p>
-          </div>
-        </CardContent>
-        <CardFooter className="flex-col items-start gap-4">
-          {isAdmin && (
-            <Button onClick={handleGenerateSummary} disabled={isAiLoading} className="no-print">
-              <Bot className="ml-2" />
-              {isAiLoading ? 'در حال تولید...' : 'خلاصه با هوش مصنوعی'}
-            </Button>
-          )}
-          {aiSummary && (
-            <div className="mt-4 w-full rounded-lg border bg-muted/50 p-4 text-sm">
-              <p className="whitespace-pre-wrap font-body">{aiSummary}</p>
-            </div>
-          )}
-        </CardFooter>
-      </Card>
+      </div>
     </div>
   );
 }
