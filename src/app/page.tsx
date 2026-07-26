@@ -10,14 +10,16 @@ import { LogOut } from 'lucide-react';
 
 const MOCK_USER: User = {
   uid: process.env.NEXT_PUBLIC_ADMIN_UID || 'l0rwK4cDCsTH1UqXO13YkF2elJr2', // Use Admin UID for mock
-  email: 'test@example.com',
-  displayName: 'کاربر آزمایشی (Admin)',
+  email: 'php.modern@gmail.com',
+  displayName: 'php.modern@gmail.com',
   photoURL: '',
+  phoneNumber: null,
   emailVerified: true,
   isAnonymous: false,
   metadata: {},
   providerData: [],
   providerId: 'mock',
+  refreshToken: '',
   tenantId: null,
   delete: async () => {},
   getIdToken: async () => '',

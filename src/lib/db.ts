@@ -1,111 +1,108 @@
-import {
-  collection,
-  addDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  orderBy,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import type { WorkLog, Payment } from '@/types';
+import {auth} from '@/lib/firebase';
+import type {Payment, WorkLog} from '@/types';
 
-const WORK_LOG_STORE = 'work-logs';
-const PAYMENT_STORE = 'payments';
-
-// IMPORTANT: All data operations are performed on the admin's data,
-// ensuring that all users see the same information.
 const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID;
 
-const getWorkLogsCollection = (userId: string) =>
-  collection(db, 'users', userId, WORK_LOG_STORE);
-const getPaymentsCollection = (userId: string) =>
-  collection(db, 'users', userId, PAYMENT_STORE);
+const assertAdmin = (userId: string) => {
+  if (!ADMIN_UID) throw new Error('ADMIN_UID is not configured');
+  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
+};
 
-// Work Log Operations
+const getAuthHeaders = async (): Promise<HeadersInit> => {
+  const token = await auth.currentUser?.getIdToken().catch(() => undefined);
+  if (!token) return {'Content-Type': 'application/json'};
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+};
+
+const parseError = async (response: Response) => {
+  try {
+    const body = await response.json();
+    if (body?.error) return String(body.error);
+  } catch {
+    // ignore parse errors
+  }
+  return `Request failed: ${response.status}`;
+};
+
+const apiGet = async <T>(path: string): Promise<T> => {
+  const response = await fetch(path, {cache: 'no-store'});
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json() as Promise<T>;
+};
+
+const apiMutate = async <T>(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown
+): Promise<T> => {
+  const response = await fetch(path, {
+    method,
+    headers: await getAuthHeaders(),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+};
+
 export const addWorkLog = async (
   userId: string,
   log: Omit<WorkLog, 'id'>
 ): Promise<WorkLog> => {
-  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
-  const docRef = await addDoc(getWorkLogsCollection(userId), {
-    ...log,
-    createdAt: Timestamp.now(),
-  });
-  return { ...log, id: docRef.id };
+  assertAdmin(userId);
+  return apiMutate<WorkLog>('/api/db/work-logs', 'POST', log);
 };
 
-export const getWorkLogs = async (userId: string): Promise<WorkLog[]> => {
-  // Always fetch the admin's work logs
-  const q = query(getWorkLogsCollection(ADMIN_UID!), orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(
-    (doc) => ({ id: doc.id, ...doc.data() } as WorkLog)
-  );
+export const getWorkLogs = async (_userId: string): Promise<WorkLog[]> => {
+  return apiGet<WorkLog[]>('/api/db/work-logs');
 };
 
 export const updateWorkLog = async (
   userId: string,
   log: WorkLog
 ): Promise<void> => {
-  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
+  assertAdmin(userId);
   if (!log.id) throw new Error('Log ID is required for update');
-  const docRef = doc(db, 'users', userId, WORK_LOG_STORE, log.id);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { id, ...data } = log;
-  await updateDoc(docRef, data);
+  await apiMutate(`/api/db/work-logs/${log.id}`, 'PUT', log);
 };
 
 export const deleteWorkLog = async (
   userId: string,
   id: string
 ): Promise<void> => {
-  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
-  const docRef = doc(db, 'users', userId, WORK_LOG_STORE, id);
-  await deleteDoc(docRef);
+  assertAdmin(userId);
+  await apiMutate(`/api/db/work-logs/${id}`, 'DELETE');
 };
 
-// Payment Operations
 export const addPayment = async (
   userId: string,
   payment: Omit<Payment, 'id'>
 ): Promise<Payment> => {
-  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
-  const docRef = await addDoc(getPaymentsCollection(userId), {
-    ...payment,
-    createdAt: Timestamp.now(),
-  });
-  return { ...payment, id: docRef.id };
+  assertAdmin(userId);
+  return apiMutate<Payment>('/api/db/payments', 'POST', payment);
 };
 
-export const getPayments = async (userId: string): Promise<Payment[]> => {
-  // Always fetch the admin's payments
-  const q = query(getPaymentsCollection(ADMIN_UID!), orderBy('date', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(
-    (doc) => ({ id: doc.id, ...doc.data() } as Payment)
-  );
+export const getPayments = async (_userId: string): Promise<Payment[]> => {
+  return apiGet<Payment[]>('/api/db/payments');
 };
 
 export const updatePayment = async (
   userId: string,
   payment: Payment
 ): Promise<void> => {
-  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
+  assertAdmin(userId);
   if (!payment.id) throw new Error('Payment ID is required for update');
-  const docRef = doc(db, 'users', userId, PAYMENT_STORE, payment.id);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { id, ...data } = payment;
-  await updateDoc(docRef, data);
+  await apiMutate(`/api/db/payments/${payment.id}`, 'PUT', payment);
 };
 
 export const deletePayment = async (
   userId: string,
   id: string
 ): Promise<void> => {
-  if (userId !== ADMIN_UID) throw new Error('Unauthorized');
-  const docRef = doc(db, 'users', userId, PAYMENT_STORE, id);
-  await deleteDoc(docRef);
+  assertAdmin(userId);
+  await apiMutate(`/api/db/payments/${id}`, 'DELETE');
 };
