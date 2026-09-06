@@ -24,6 +24,9 @@ import {
 import { downloadExcelReport, downloadHtmlReport } from '@/lib/export-report';
 import type { Payment, WorkLog } from '@/types';
 import { cn } from '@/lib/utils';
+import ClockifyWorkTimeline, {
+  filterLogsByDayKey,
+} from '@/components/clockify-work-timeline';
 
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -122,6 +125,9 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
   const [aiSummary, setAiSummary] = useState('');
   const [isAiLoading, startAiTransition] = useTransition();
   const [isSyncing, setIsSyncing] = useState(true);
+  const [selectedClockifyDay, setSelectedClockifyDay] = useState<string | null>(
+    null
+  );
 
   const { toast } = useToast();
 
@@ -177,6 +183,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
       })).sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
 
       setClockifyWorkLogs(formattedWorkLogs);
+      setSelectedClockifyDay(null);
       if (isDataLoaded) { // Avoid showing toast on initial load
         toast({
           title: 'همگام‌سازی موفق',
@@ -375,6 +382,11 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
   const combinedWorkLogs = useMemo(() => {
     return [...clockifyWorkLogs, ...manualWorkLogs];
   }, [clockifyWorkLogs, manualWorkLogs]);
+
+  const visibleClockifyWorkLogs = useMemo(
+    () => filterLogsByDayKey(clockifyWorkLogs, selectedClockifyDay),
+    [clockifyWorkLogs, selectedClockifyDay]
+  );
 
 
   const {
@@ -924,8 +936,16 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
 
       </div>
 
-     
-      <Card className="print-clockify print-card">
+      <div className="print-clockify mt-8 flex items-stretch gap-2">
+        <div className="no-print hidden w-9 shrink-0 self-stretch sm:block">
+          <ClockifyWorkTimeline
+            logs={clockifyWorkLogs}
+            className="h-full min-h-full"
+            selectedDayKey={selectedClockifyDay}
+            onSelectDay={setSelectedClockifyDay}
+          />
+        </div>
+        <Card className="print-card min-w-0 flex-1">
            <CardHeader>
              <div className="flex flex-wrap justify-between items-center gap-2">
                 <div>
@@ -936,14 +956,26 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                       در چاپ به‌صورت اسکرول‌شونده در انتهای صفحه می‌ماند.
                     </CardDescription>
                 </div>
-                {isAdmin && (
-                  <div className='flex gap-2 no-print'>
+                <div className="flex flex-wrap gap-2 no-print">
+                  {selectedClockifyDay && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setSelectedClockifyDay(null)}
+                    >
+                      حذف فیلتر روز
+                      <Badge variant="outline" className="mr-2 font-tabular">
+                        {visibleClockifyWorkLogs.length}
+                      </Badge>
+                    </Button>
+                  )}
+                  {isAdmin && (
                       <Button onClick={handleSyncClockify} disabled={isSyncing}>
                         <RefreshCw className={cn("ml-2", isSyncing && "animate-spin")} />
                         {isSyncing ? 'در حال دریافت...' : 'همگام‌سازی'}
                       </Button>
-                  </div>
-                )}
+                  )}
+                </div>
             </div>
           </CardHeader>
           <CardContent className="flex-grow overflow-hidden">
@@ -966,8 +998,8 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                           <TableRow><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                           <TableRow><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                       </>
-                  ) : clockifyWorkLogs.length > 0 ? (
-                    clockifyWorkLogs.map((log) => (
+                  ) : visibleClockifyWorkLogs.length > 0 ? (
+                    visibleClockifyWorkLogs.map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="font-medium">
                           {log.description}
@@ -992,7 +1024,9 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8">
-                        برای نمایش اطلاعات، با Clockify همگام‌سازی کنید.
+                        {selectedClockifyDay
+                          ? 'برای این روز رکوردی نیست.'
+                          : 'برای نمایش اطلاعات، با Clockify همگام‌سازی کنید.'}
                       </TableCell>
                     </TableRow>
                   )}
@@ -1001,6 +1035,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
             </ScrollArea>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );
