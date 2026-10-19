@@ -10,6 +10,8 @@ import type {
 
 const DEFAULT_RATE = 8.12;
 const DEFAULT_TZ = 'Asia/Tehran';
+/** D1/SQLite max bound parameters per statement. */
+const D1_MAX_BOUND_VARS = 100;
 
 type EntryRow = {
   id: string;
@@ -81,22 +83,35 @@ async function loadTagsForEntries(
   const map = new Map<string, {ids: string[]; names: string[]}>();
   if (entryIds.length === 0) return map;
 
-  const placeholders = entryIds.map(() => '?').join(',');
-  const rows = await db
-    .prepare(
-      `SELECT tet.time_entry_id, t.id AS tag_id, t.name AS tag_name
-       FROM time_entry_tags tet
-       JOIN tags t ON t.id = tet.tag_id
-       WHERE tet.time_entry_id IN (${placeholders})`
-    )
-    .bind(...entryIds)
-    .all<{time_entry_id: string; tag_id: string; tag_name: string}>();
+  const statements: D1PreparedStatement[] = [];
+  for (let i = 0; i < entryIds.length; i += D1_MAX_BOUND_VARS) {
+    const chunk = entryIds.slice(i, i + D1_MAX_BOUND_VARS);
+    const placeholders = chunk.map(() => '?').join(',');
+    statements.push(
+      db
+        .prepare(
+          `SELECT tet.time_entry_id, t.id AS tag_id, t.name AS tag_name
+           FROM time_entry_tags tet
+           JOIN tags t ON t.id = tet.tag_id
+           WHERE tet.time_entry_id IN (${placeholders})`
+        )
+        .bind(...chunk)
+    );
+  }
 
-  for (const row of rows.results ?? []) {
-    const current = map.get(row.time_entry_id) ?? {ids: [], names: []};
-    current.ids.push(row.tag_id);
-    current.names.push(row.tag_name);
-    map.set(row.time_entry_id, current);
+  const batches = await db.batch<{
+    time_entry_id: string;
+    tag_id: string;
+    tag_name: string;
+  }>(statements);
+
+  for (const result of batches) {
+    for (const row of result.results ?? []) {
+      const current = map.get(row.time_entry_id) ?? {ids: [], names: []};
+      current.ids.push(row.tag_id);
+      current.names.push(row.tag_name);
+      map.set(row.time_entry_id, current);
+    }
   }
   return map;
 }
