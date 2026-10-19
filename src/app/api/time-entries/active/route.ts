@@ -5,6 +5,7 @@ import {getDB} from '@/lib/cloudflare';
 import {getActiveTimer} from '@/lib/time-entries-db';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {

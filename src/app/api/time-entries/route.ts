@@ -5,6 +5,7 @@ import {createTimeEntry, listTimeEntries} from '@/lib/time-entries-db';
 import type {CreateTimeEntryInput, TimeEntrySource} from '@/types/time-tracking';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {

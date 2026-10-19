@@ -5,6 +5,7 @@ import {startTimer} from '@/lib/time-entries-db';
 import type {StartTimerInput} from '@/types/time-tracking';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {

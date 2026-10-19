@@ -100,12 +100,19 @@ npm run preview
 ## ۷) توسعه لوکال با Next
 
 ```bash
-npm run db:migrate:local
-npm run db:import:local   # یک‌بار
-npm run dev               # پورت 9002
+npm run db:migrate:local   # الزامی — بدون این، API با «no such table» می‌افتد
+npm run db:import:local    # یک‌بار برای پر کردن کارکرد Clockify
+npm run dev                # پورت 9002
 ```
 
-`initOpenNextCloudflareForDev` در `next.config.ts` بایندینگ D1 لوکال را برای Route Handlerها فعال می‌کند.
+`initOpenNextCloudflareForDev` در `next.config.ts` بایندینگ D1 را برای Route Handlerها فعال می‌کند.
+
+اگر در UI خطای «امکان دریافت اطلاعات از دیتابیس Cloudflare» دیدید، معمولاً یکی از این‌هاست:
+1. مایگریشن لوکال اجرا نشده (`db:migrate:local`)
+2. `next start` بدون Worker — باید `npm run dev` یا دیپلوی Workers باشد
+3. روی Worker دیپلوی‌شده: مایگریشن ریموت (`db:migrate:remote`) یا بایندینگ `DB` در `wrangler.toml`
+
+برای خواندن مستقیم D1 پروداکشن از `next dev`، در `wrangler.toml` روی بایندینگ D1 خط `remote = true` را فعال کنید (نیاز به دسترسی پایدار به API کلادفلر).
 
 ## مسیرهای مهم
 - `/timer` — استارت/استاپ و CRUD کارکرد

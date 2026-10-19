@@ -16,6 +16,8 @@ binding = "DB"
 database_name = "arzi-time-db"
 database_id = "9615c717-c928-4e9a-b677-f2310b0acbc7"
 migrations_dir = "migrations"
+# Uncomment to use production D1 from `next dev` (needs stable CF API access):
+# remote = true
 
 [images]
 binding = "IMAGES"

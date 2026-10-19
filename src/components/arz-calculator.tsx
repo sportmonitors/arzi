@@ -171,10 +171,14 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
       }
     } catch (error) {
       console.error('Failed to load time entries from D1:', error);
+      const detail =
+        error instanceof Error && error.message
+          ? error.message
+          : 'امکان دریافت اطلاعات از دیتابیس Cloudflare وجود ندارد.';
       toast({
         variant: 'destructive',
         title: 'خطا در بارگذاری کارکرد',
-        description: 'امکان دریافت اطلاعات از دیتابیس Cloudflare وجود ندارد.',
+        description: detail,
       });
     } finally {
       setIsSyncing(false);
