@@ -33,12 +33,22 @@ npm run db:migrate:remote
 
 ## ۳) ایمپورت کارکردهای Clockify (`old_works_logs`)
 
+قبل از ایمپورت، جداول را خالی می‌کند و فقط یک‌بار به‌ازای هر `_id` کلاکی‌فای UPSERT می‌کند
+(رنج‌های هم‌پوشان در چند JSON ادغام می‌شوند؛ آخرین فایل برنده است).
+
+پیش‌فرض فقط پروژه **ERP**:
+
 ```bash
 npm run db:import:local
 npm run db:import:remote
 ```
 
-حدود ۶۰۸ رکورد با حفظ `_id`، پروژه‌ها و تگ‌ها وارد می‌شود.
+همه پروژه‌ها:
+
+```bash
+npm run db:import:local:all
+npm run db:import:remote:all
+```
 
 ## ۴) متغیرهای محیطی Worker
 

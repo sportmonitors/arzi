@@ -16,8 +16,10 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "db:migrate:local": "wrangler d1 migrations apply arzi-time-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply arzi-time-db --remote",
-    "db:import:local": "tsx scripts/import-clockify-logs.ts --local",
-    "db:import:remote": "tsx scripts/import-clockify-logs.ts --remote"
+    "db:import:local": "tsx scripts/import-clockify-logs.ts --local --reset --project-name=ERP",
+    "db:import:remote": "tsx scripts/import-clockify-logs.ts --remote --reset --project-name=ERP",
+    "db:import:local:all": "tsx scripts/import-clockify-logs.ts --local --reset",
+    "db:import:remote:all": "tsx scripts/import-clockify-logs.ts --remote --reset"
   },
   "engines": {
     "node": ">=20"

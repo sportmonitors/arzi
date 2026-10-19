@@ -98,22 +98,59 @@ const formatHours = (seconds: number) =>
     seconds / 3600
   );
 
+const DATETIME_LOCAL = "yyyy-MM-dd'T'HH:mm";
+
+const toLocalInput = (date: Date) => format(date, DATETIME_LOCAL);
+
+const parseLocalInput = (value: string): Date | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const hoursBetween = (start: string, end: string): number => {
+  const s = parseLocalInput(start);
+  const e = parseLocalInput(end);
+  if (!s || !e) return 0;
+  return Math.max(0, (e.getTime() - s.getTime()) / 3_600_000);
+};
+
+const applyHoursFromStart = (start: string, hours: number): string => {
+  const s = parseLocalInput(start);
+  if (!s || !(hours > 0)) return start;
+  return toLocalInput(new Date(s.getTime() + hours * 3_600_000));
+};
+
+const applyHoursFromEnd = (end: string, hours: number): string => {
+  const e = parseLocalInput(end);
+  if (!e || !(hours > 0)) return end;
+  return toLocalInput(new Date(e.getTime() - hours * 3_600_000));
+};
+
+type DurationAnchor = 'start' | 'end';
+
 type ManualForm = {
   description: string;
   projectId: string;
   rate: number;
   start: string;
   end: string;
+  /** Decimal hours, e.g. 32.45 */
+  hours: number;
+  /** When hours change, keep this side fixed and move the other. */
+  durationAnchor: DurationAnchor;
 };
 
 const emptyManualForm = (): ManualForm => {
-  const now = format(new Date(), "yyyy-MM-dd'T'HH:mm");
+  const now = toLocalInput(new Date());
   return {
     description: '',
     projectId: NONE_PROJECT,
     rate: DEFAULT_RATE,
     start: now,
     end: now,
+    hours: 0,
+    durationAnchor: 'start',
   };
 };
 
@@ -234,17 +271,68 @@ export default function TimeTracker({user}: {user: User}) {
 
   const openEdit = (entry: TimeEntry) => {
     setEditing(entry);
+    const start = toLocalInput(new Date(entry.startAt));
+    const end = toLocalInput(new Date(entry.endAt || entry.startAt));
+    const hours =
+      entry.durationSeconds > 0
+        ? entry.durationSeconds / 3600
+        : hoursBetween(start, end);
     setManualForm({
       description: entry.description,
       projectId: entry.projectId || NONE_PROJECT,
       rate: entry.rate,
-      start: format(new Date(entry.startAt), "yyyy-MM-dd'T'HH:mm"),
-      end: format(
-        new Date(entry.endAt || entry.startAt),
-        "yyyy-MM-dd'T'HH:mm"
-      ),
+      start,
+      end,
+      hours: Math.round(hours * 100) / 100,
+      durationAnchor: 'start',
     });
     setDialogOpen(true);
+  };
+
+  const setManualHours = (rawHours: number) => {
+    const hours = Number.isFinite(rawHours) ? Math.max(0, rawHours) : 0;
+    setManualForm((f) => {
+      if (f.durationAnchor === 'end') {
+        return {
+          ...f,
+          hours,
+          start: hours > 0 ? applyHoursFromEnd(f.end, hours) : f.start,
+        };
+      }
+      return {
+        ...f,
+        hours,
+        end: hours > 0 ? applyHoursFromStart(f.start, hours) : f.end,
+      };
+    });
+  };
+
+  const setManualStart = (start: string) => {
+    setManualForm((f) => {
+      if (f.hours > 0 && f.durationAnchor === 'start') {
+        return {...f, start, end: applyHoursFromStart(start, f.hours)};
+      }
+      if (f.hours > 0 && f.durationAnchor === 'end') {
+        return {...f, start, hours: hoursBetween(start, f.end)};
+      }
+      return {...f, start, hours: hoursBetween(start, f.end)};
+    });
+  };
+
+  const setManualEnd = (end: string) => {
+    setManualForm((f) => {
+      if (f.hours > 0 && f.durationAnchor === 'end') {
+        return {...f, end, start: applyHoursFromEnd(end, f.hours)};
+      }
+      if (f.hours > 0 && f.durationAnchor === 'start') {
+        return {...f, end, hours: hoursBetween(f.start, end)};
+      }
+      return {...f, end, hours: hoursBetween(f.start, end)};
+    });
+  };
+
+  const setDurationAnchor = (durationAnchor: DurationAnchor) => {
+    setManualForm((f) => ({...f, durationAnchor}));
   };
 
   const handleSaveManual = async () => {
@@ -253,12 +341,36 @@ export default function TimeTracker({user}: {user: User}) {
       toast({variant: 'destructive', title: 'شرح الزامی است'});
       return;
     }
+
+    let startAt: Date | null = parseLocalInput(manualForm.start);
+    let endAt: Date | null = parseLocalInput(manualForm.end);
+    const hours = manualForm.hours;
+
+    if (hours > 0 && startAt && manualForm.durationAnchor === 'start') {
+      endAt = new Date(startAt.getTime() + hours * 3_600_000);
+    } else if (hours > 0 && endAt && manualForm.durationAnchor === 'end') {
+      startAt = new Date(endAt.getTime() - hours * 3_600_000);
+    }
+
+    if (!startAt || !endAt) {
+      toast({variant: 'destructive', title: 'تاریخ شروع/پایان نامعتبر است'});
+      return;
+    }
+    if (endAt.getTime() <= startAt.getTime()) {
+      toast({
+        variant: 'destructive',
+        title: 'مدت نامعتبر',
+        description: 'پایان باید بعد از شروع باشد — ساعت را وارد کنید.',
+      });
+      return;
+    }
+
     setBusy(true);
     try {
       const payload = {
         description: manualForm.description.trim(),
-        startAt: new Date(manualForm.start).toISOString(),
-        endAt: new Date(manualForm.end).toISOString(),
+        startAt: startAt.toISOString(),
+        endAt: endAt.toISOString(),
         rate: manualForm.rate,
         projectId:
           manualForm.projectId === NONE_PROJECT ? null : manualForm.projectId,
@@ -580,15 +692,53 @@ export default function TimeTracker({user}: {user: User}) {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>مدت (ساعت اعشاری)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="مثلاً 32.45"
+                value={manualForm.hours || ''}
+                onChange={(e) =>
+                  setManualHours(
+                    e.target.value === '' ? 0 : Number(e.target.value)
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                مثال: ۳۲.۴۵ ساعت ≈ ۳۲ ساعت و ۲۷ دقیقه. با تغییر مدت، تاریخ دیگر
+                خودکار تنظیم می‌شود.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>محاسبه نسبت به</Label>
+              <Select
+                value={manualForm.durationAnchor}
+                onValueChange={(v) =>
+                  setDurationAnchor(v as DurationAnchor)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="start">
+                    شروع ثابت → پایان از روی مدت
+                  </SelectItem>
+                  <SelectItem value="end">
+                    پایان ثابت → شروع از روی مدت
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>شروع</Label>
                 <Input
                   type="datetime-local"
                   value={manualForm.start}
-                  onChange={(e) =>
-                    setManualForm((f) => ({...f, start: e.target.value}))
-                  }
+                  onChange={(e) => setManualStart(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -596,9 +746,7 @@ export default function TimeTracker({user}: {user: User}) {
                 <Input
                   type="datetime-local"
                   value={manualForm.end}
-                  onChange={(e) =>
-                    setManualForm((f) => ({...f, end: e.target.value}))
-                  }
+                  onChange={(e) => setManualEnd(e.target.value)}
                 />
               </div>
             </div>
