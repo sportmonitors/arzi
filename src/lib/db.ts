@@ -17,7 +17,7 @@ const getAuthHeaders = async (): Promise<HeadersInit> => {
 
 const parseError = async (response: Response) => {
   try {
-    const body = await response.json();
+    const body = (await response.json()) as {error?: unknown};
     if (body?.error) return String(body.error);
   } catch {
     // ignore parse errors

@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Bot, Calculator, Download, Edit, FileCode2, FileSpreadsheet, PlusCircle, Printer, RefreshCw, Trash2 } from 'lucide-react';
+import { Bot, Calculator, Clock, Download, Edit, FileCode2, FileSpreadsheet, PlusCircle, Printer, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -16,17 +16,22 @@ import {
   deletePayment,
   getPayments,
   updatePayment,
-  getWorkLogs,
-  addWorkLog,
-  updateWorkLog,
-  deleteWorkLog,
 } from '@/lib/db';
+import {
+  createTimeEntryApi,
+  deleteTimeEntryApi,
+  getAllTimeEntries,
+  timeEntriesAsWorkLogs,
+  updateTimeEntryApi,
+  type WorkLogWithSource,
+} from '@/lib/time-api';
 import { downloadExcelReport, downloadHtmlReport } from '@/lib/export-report';
 import type { Payment, WorkLog } from '@/types';
 import { cn } from '@/lib/utils';
 import ClockifyWorkTimeline, {
   filterLogsByDayKey,
 } from '@/components/clockify-work-timeline';
+import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -103,22 +108,9 @@ interface ArzCalculatorProps {
   user: User;
 }
 
-// Interface for the data coming from the Clockify API
-interface ClockifyTimeEntry {
-  description: string;
-  timeInterval: {
-    start: string;
-    end: string;
-    duration: number; // in seconds
-  };
-  rate: number;
-  amount: number; // This is the earned amount
-  _id: string;
-}
-
 export default function ArzCalculator({ user }: ArzCalculatorProps) {
-  const [manualWorkLogs, setManualWorkLogs] = useState<WorkLog[]>([]);
-  const [clockifyWorkLogs, setClockifyWorkLogs] = useState<WorkLog[]>([]);
+  const [manualWorkLogs, setManualWorkLogs] = useState<WorkLogWithSource[]>([]);
+  const [trackedWorkLogs, setTrackedWorkLogs] = useState<WorkLogWithSource[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [exchangeRate, setExchangeRate] = useState(0);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -161,42 +153,28 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
   });
 
 
-  const handleSyncClockify = async () => {
+  const loadTimeEntriesFromD1 = async (showToast = false) => {
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/clockify-report');
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      const clockifyEntries: ClockifyTimeEntry[] = await response.json();
-      
-      const CORRECT_RATE = 8.12;
-
-      const formattedWorkLogs: WorkLog[] = clockifyEntries.map(entry => ({
-        id: `clockify-${entry._id}`,
-        description: entry.description || 'بدون شرح',
-        hours: (entry.timeInterval.duration || 0) / 3600,
-        rate: CORRECT_RATE, // Correct the rate here
-        start: entry.timeInterval.start,
-        end: entry.timeInterval.end,
-        isManual: false,
-      })).sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
-
-      setClockifyWorkLogs(formattedWorkLogs);
+      const entries = await getAllTimeEntries();
+      const logs = timeEntriesAsWorkLogs(entries).sort(
+        (a, b) => new Date(b.start).getTime() - new Date(a.start).getTime()
+      );
+      setManualWorkLogs(logs.filter((l) => l.source === 'manual'));
+      setTrackedWorkLogs(logs.filter((l) => l.source !== 'manual'));
       setSelectedClockifyDay(null);
-      if (isDataLoaded) { // Avoid showing toast on initial load
+      if (showToast) {
         toast({
-          title: 'همگام‌سازی موفق',
-          description: `${formattedWorkLogs.length} رکورد کاری از Clockify بارگذاری شد.`
+          title: 'بارگذاری موفق',
+          description: `${logs.length} رکورد کارکرد از D1 بارگذاری شد.`,
         });
       }
-
     } catch (error) {
-      console.error("Failed to sync with Clockify:", error);
+      console.error('Failed to load time entries from D1:', error);
       toast({
         variant: 'destructive',
-        title: 'خطا در همگام‌سازی',
-        description: 'امکان دریافت اطلاعات از Clockify وجود ندارد.',
+        title: 'خطا در بارگذاری کارکرد',
+        description: 'امکان دریافت اطلاعات از دیتابیس Cloudflare وجود ندارد.',
       });
     } finally {
       setIsSyncing(false);
@@ -207,19 +185,17 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
     async function loadData() {
       if (!user) return;
       try {
-        const [paymentsData, workLogsData] = await Promise.all([
+        const [paymentsData] = await Promise.all([
           getPayments(ADMIN_UID),
-          getWorkLogs(ADMIN_UID),
-          handleSyncClockify() // Automatically sync with Clockify on initial load
+          loadTimeEntriesFromD1(false),
         ]);
         setPayments(paymentsData);
-        setManualWorkLogs(workLogsData.sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime()));
       } catch (error) {
         console.error(error);
         toast({
           variant: 'destructive',
           title: 'خطا در بارگذاری اطلاعات',
-          description: 'خطا در بارگذاری اطلاعات از Firestore.',
+          description: 'خطا در بارگذاری پرداخت‌ها یا کارکرد.',
         });
       } finally {
         setIsDataLoaded(true);
@@ -334,27 +310,36 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
 
   const handleWorkLogSubmit = async (values: z.infer<typeof workLogSchema>) => {
     if (!isAdmin) return;
-    const workLogData = {
-      ...values,
-      isManual: true,
-      start: values.start || new Date().toISOString(),
-      end: values.end || new Date().toISOString(),
-    };
+    const startDate = values.start ? new Date(values.start) : new Date();
+    const endDate =
+      values.hours > 0
+        ? new Date(startDate.getTime() + values.hours * 3600 * 1000)
+        : values.end
+          ? new Date(values.end)
+          : new Date();
+    const startAt = startDate.toISOString();
+    const endAt = endDate.toISOString();
 
     try {
       if (editingWorkLog && editingWorkLog.id) {
-        const updatedLog = { ...editingWorkLog, ...workLogData };
-        await updateWorkLog(ADMIN_UID!, updatedLog);
-        setManualWorkLogs(
-          manualWorkLogs.map((l) => (l.id === updatedLog.id ? updatedLog : l)).sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
-        );
+        await updateTimeEntryApi(ADMIN_UID!, editingWorkLog.id, {
+          description: values.description,
+          startAt,
+          endAt,
+          rate: values.rate,
+        });
         toast({ title: 'موفق', description: 'رکورد کاری ویرایش شد.' });
       } else {
-        const newLog = await addWorkLog(ADMIN_UID!, workLogData);
-        setManualWorkLogs([...manualWorkLogs, newLog].sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime()));
+        await createTimeEntryApi(ADMIN_UID!, {
+          description: values.description,
+          startAt,
+          endAt,
+          rate: values.rate,
+        });
         toast({ title: 'موفق', description: 'رکورد کاری اضافه شد.' });
       }
       closeWorkLogDialog();
+      await loadTimeEntriesFromD1(false);
     } catch {
       toast({
         variant: 'destructive',
@@ -367,9 +352,9 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
   const handleDeleteWorkLog = async (id: string) => {
     if (!isAdmin) return;
     try {
-      await deleteWorkLog(ADMIN_UID!, id);
-      setManualWorkLogs(manualWorkLogs.filter((l) => l.id !== id));
+      await deleteTimeEntryApi(ADMIN_UID!, id);
       toast({ title: 'موفق', description: 'رکورد کاری حذف شد.' });
+      await loadTimeEntriesFromD1(false);
     } catch {
       toast({
         variant: 'destructive',
@@ -380,12 +365,12 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
   };
 
   const combinedWorkLogs = useMemo(() => {
-    return [...clockifyWorkLogs, ...manualWorkLogs];
-  }, [clockifyWorkLogs, manualWorkLogs]);
+    return [...trackedWorkLogs, ...manualWorkLogs];
+  }, [trackedWorkLogs, manualWorkLogs]);
 
-  const visibleClockifyWorkLogs = useMemo(
-    () => filterLogsByDayKey(clockifyWorkLogs, selectedClockifyDay),
-    [clockifyWorkLogs, selectedClockifyDay]
+  const visibleTrackedWorkLogs = useMemo(
+    () => filterLogsByDayKey(trackedWorkLogs, selectedClockifyDay),
+    [trackedWorkLogs, selectedClockifyDay]
   );
 
 
@@ -447,7 +432,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
     balanceIRT,
     payments,
     manualWorkLogs,
-    clockifyWorkLogs,
+    clockifyWorkLogs: trackedWorkLogs,
   });
 
   const handlePrint = () => {
@@ -532,6 +517,14 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                 className="w-full text-center font-headline text-lg font-tabular md:w-48"
               />
             </div>
+          )}
+          {isAdmin && (
+            <Button variant="outline" className="gap-2" asChild>
+              <Link href="/timer">
+                <Clock className="h-4 w-4" />
+                تایمر
+              </Link>
+            </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -939,7 +932,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
       <div className="print-clockify mt-8 flex items-stretch gap-2">
         <div className="no-print hidden w-9 shrink-0 self-stretch sm:block">
           <ClockifyWorkTimeline
-            logs={clockifyWorkLogs}
+            logs={trackedWorkLogs}
             className="h-full min-h-full"
             selectedDayKey={selectedClockifyDay}
             onSelectDay={setSelectedClockifyDay}
@@ -949,10 +942,10 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
            <CardHeader>
              <div className="flex flex-wrap justify-between items-center gap-2">
                 <div>
-                    <CardTitle>سوابق کاری Clockify</CardTitle>
+                    <CardTitle>سوابق کارکرد (D1)</CardTitle>
                     <CardDescription>
-                      سوابق کاری همگام‌شده از Clockify
-                      {clockifyWorkLogs.length > 0 ? ` · ${clockifyWorkLogs.length} رکورد` : ''}.
+                      ایمپورت Clockify + تایمر
+                      {trackedWorkLogs.length > 0 ? ` · ${trackedWorkLogs.length} رکورد` : ''}.
                       در چاپ به‌صورت اسکرول‌شونده در انتهای صفحه می‌ماند.
                     </CardDescription>
                 </div>
@@ -965,14 +958,14 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                     >
                       حذف فیلتر روز
                       <Badge variant="outline" className="mr-2 font-tabular">
-                        {visibleClockifyWorkLogs.length}
+                        {visibleTrackedWorkLogs.length}
                       </Badge>
                     </Button>
                   )}
                   {isAdmin && (
-                      <Button onClick={handleSyncClockify} disabled={isSyncing}>
+                      <Button onClick={() => loadTimeEntriesFromD1(true)} disabled={isSyncing}>
                         <RefreshCw className={cn("ml-2", isSyncing && "animate-spin")} />
-                        {isSyncing ? 'در حال دریافت...' : 'همگام‌سازی'}
+                        {isSyncing ? 'در حال دریافت...' : 'بروزرسانی از D1'}
                       </Button>
                   )}
                 </div>
@@ -992,14 +985,14 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isSyncing && clockifyWorkLogs.length === 0 ? (
+                  {isSyncing && trackedWorkLogs.length === 0 ? (
                       <>
                           <TableRow><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                           <TableRow><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                           <TableRow><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                       </>
-                  ) : visibleClockifyWorkLogs.length > 0 ? (
-                    visibleClockifyWorkLogs.map((log) => (
+                  ) : visibleTrackedWorkLogs.length > 0 ? (
+                    visibleTrackedWorkLogs.map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="font-medium">
                           {log.description}
@@ -1026,7 +1019,7 @@ export default function ArzCalculator({ user }: ArzCalculatorProps) {
                       <TableCell colSpan={6} className="text-center py-8">
                         {selectedClockifyDay
                           ? 'برای این روز رکوردی نیست.'
-                          : 'برای نمایش اطلاعات، با Clockify همگام‌سازی کنید.'}
+                          : 'هنوز رکوردی در D1 نیست. ایمپورت را اجرا کنید یا از صفحه تایمر استارت بزنید.'}
                       </TableCell>
                     </TableRow>
                   )}

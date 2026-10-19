@@ -1,0 +1,62 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cloudflare-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write build env
+        run: |
+          {
+            echo "NEXTJS_ENV=production"
+            echo "NEXT_PUBLIC_USE_MOCK_AUTH=false"
+            if [ -n "${NEXT_PUBLIC_ADMIN_UID:-}" ]; then
+              echo "NEXT_PUBLIC_ADMIN_UID=${NEXT_PUBLIC_ADMIN_UID}"
+            fi
+            if [ -n "${FIREBASE_API_KEY:-}" ]; then
+              echo "FIREBASE_API_KEY=${FIREBASE_API_KEY}"
+            fi
+          } > .env.production
+        env:
+          NEXT_PUBLIC_ADMIN_UID: ${{ vars.NEXT_PUBLIC_ADMIN_UID }}
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+
+      - name: Build OpenNext worker
+        run: npx opennextjs-cloudflare build
+        env:
+          NEXTJS_ENV: production
+
+      - name: Deploy worker
+        # OPEN_NEXT_DEPLOY bypasses OpenNext's R2 cache populate (flaky with API tokens in CI).
+        # Cache warms lazily on first requests — fine without an R2 incremental cache binding.
+        run: npx wrangler deploy
+        env:
+          OPEN_NEXT_DEPLOY: 'true'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

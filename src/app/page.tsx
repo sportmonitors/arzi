@@ -7,7 +7,8 @@ import { auth } from '@/lib/firebase';
 import Auth from '@/components/auth';
 import ArzCalculator from '@/components/arz-calculator';
 import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
+import { Clock, LogOut } from 'lucide-react';
+import Link from 'next/link';
 
 const MOCK_USER: User = {
   uid: ADMIN_UID,
@@ -23,7 +24,7 @@ const MOCK_USER: User = {
   refreshToken: '',
   tenantId: null,
   delete: async () => {},
-  getIdToken: async () => '',
+  getIdToken: async () => 'mock',
   getIdTokenResult: async () => ({} as any),
   reload: async () => {},
   toJSON: () => ({}),
@@ -75,7 +76,13 @@ export default function Home() {
     <main>
       {user ? (
         <>
-          <div className="absolute top-4 left-4 z-10 no-print">
+          <div className="absolute top-4 left-4 z-10 flex gap-2 no-print">
+            <Button variant="outline" asChild>
+              <Link href="/timer">
+                <Clock className="ml-2 h-4 w-4" />
+                تایمر
+              </Link>
+            </Button>
             <Button variant="outline" onClick={handleSignOut}>
               <LogOut className="ml-2" />
               خروج
