@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAdmin(request);
     const db = await getDB();
     const {searchParams} = request.nextUrl;
     const result = await listTimeEntries(db, {
@@ -21,6 +22,9 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({error: error.message}, {status: error.status});
+    }
     console.error('GET /api/time-entries failed:', error);
     return NextResponse.json(
       {error: error instanceof Error ? error.message : 'Failed to load time entries'},

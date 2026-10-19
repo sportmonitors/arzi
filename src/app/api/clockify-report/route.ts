@@ -1,8 +1,10 @@
 import https from 'node:https';
-import {NextResponse} from 'next/server';
+import {NextRequest, NextResponse} from 'next/server';
+import {AuthError, requireAdmin} from '@/lib/firebase-auth-server';
 import {getProxyAgent, getProxyUrl} from '@/lib/proxy-agent';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const fetchClockifyReport = (reportUrl: string): Promise<unknown> =>
   new Promise((resolve, reject) => {
@@ -50,8 +52,9 @@ const fetchClockifyReport = (reportUrl: string): Promise<unknown> =>
 
 // This is our proxy API route. It fetches data from the Clockify shared report URL.
 // We use a proxy to avoid CORS issues that would happen if the browser tried to fetch directly.
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await requireAdmin(request);
     const reportUrl =
       'https://app.clockify.me/report/shared/692acd86bf199e181d39f05f?page=1&pageSize=600&dateRangeStart=&dateRangeEnd=&sortOrder=&sortColumn=';
     const data = await fetchClockifyReport(reportUrl);
@@ -64,6 +67,9 @@ export async function GET() {
 
     return NextResponse.json(timeentries);
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({error: error.message}, {status: error.status});
+    }
     console.error('Error fetching Clockify report:', error);
     return NextResponse.json(
       {message: 'Error fetching Clockify report'},

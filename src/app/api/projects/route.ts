@@ -1,16 +1,21 @@
-import {NextResponse} from 'next/server';
+import {NextRequest, NextResponse} from 'next/server';
+import {AuthError, requireAdmin} from '@/lib/firebase-auth-server';
 import {getDB} from '@/lib/cloudflare';
 import {listProjects} from '@/lib/time-entries-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await requireAdmin(request);
     const db = await getDB();
     const projects = await listProjects(db);
     return NextResponse.json(projects);
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({error: error.message}, {status: error.status});
+    }
     console.error('GET /api/projects failed:', error);
     return NextResponse.json(
       {error: error instanceof Error ? error.message : 'Failed to load projects'},

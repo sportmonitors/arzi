@@ -7,7 +7,9 @@ const assertAdmin = (userId: string) => {
 };
 
 const getAuthHeaders = async (): Promise<HeadersInit> => {
-  const token = await auth.currentUser?.getIdToken().catch(() => undefined);
+  const token =
+    (await auth.currentUser?.getIdToken().catch(() => undefined)) ||
+    (process.env.NEXT_PUBLIC_USE_MOCK_AUTH === 'true' ? 'mock' : undefined);
   if (!token) return {'Content-Type': 'application/json'};
   return {
     'Content-Type': 'application/json',
@@ -26,7 +28,10 @@ const parseError = async (response: Response) => {
 };
 
 const apiGet = async <T>(path: string): Promise<T> => {
-  const response = await fetch(path, {cache: 'no-store'});
+  const response = await fetch(path, {
+    cache: 'no-store',
+    headers: await getAuthHeaders(),
+  });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json() as Promise<T>;
 };
